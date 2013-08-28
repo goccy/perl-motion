@@ -1,0 +1,32 @@
+# carton snapshot format: version 1.0
+DISTRIBUTIONS
+  YAML-0.84
+    pathname: M/MS/MSTROUT/YAML-0.84.tar.gz
+    provides:
+      Test::YAML 0.84
+      Test::YAML::Filter 0.84
+      YAML 0.84
+      YAML::Any 0.84
+      YAML::Dumper 0.84
+      YAML::Dumper::Base 0.84
+      YAML::Error 0.84
+      YAML::Loader 0.84
+      YAML::Loader::Base 0.84
+      YAML::Marshall 0.84
+      YAML::Mo 0.84
+      YAML::Node 0.84
+      YAML::Tag 0.84
+      YAML::Type::blessed 0.84
+      YAML::Type::code 0.84
+      YAML::Type::glob 0.84
+      YAML::Type::ref 0.84
+      YAML::Type::regexp 0.84
+      YAML::Type::undef 0.84
+      YAML::Types 0.84
+      YAML::Warning 0.84
+      yaml_mapping 0.84
+      yaml_scalar 0.84
+      yaml_sequence 0.84
+    requirements:
+      ExtUtils::MakeMaker 6.59
+      perl 5.008001

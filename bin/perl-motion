@@ -1,0 +1,7 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use PerlMotion::CLI;
+
+my $perlmotion = PerlMotion::CLI->new();
+$perlmotion->run(\@ARGV);
