@@ -13,18 +13,22 @@ sub generate_app_delegate_code {
     my ($app_name) = @_;
     my $app_delegate_code = do { local $/; <DATA> };
     my $code = sprintf($app_delegate_code, $app_name);
-    make_path("extlib/$app_name");
-    open my $fh, '>', "extlib/$app_name/AppDelegate.pm";
-    print $fh $code;
-    close $fh;
-    print "generate extlib/$app_name/AppDelegate.pm\n";
     my $conf = {
         app_name => $app_name,
         delegate => "$app_name\::AppDelegate"
     };
-    open $fh, '>', 'app.conf';
+    make_path("$app_name/lib/$app_name");
+    open my $fh, '>', "$app_name/lib/$app_name/AppDelegate.pm";
+    print $fh $code;
+    close $fh;
+    print "generate $app_name\n";
+    print "generate $app_name/lib\n";
+    print "generate $app_name/lib/$app_name\n";
+    print "generate $app_name/lib/$app_name/AppDelegate.pm\n";
+    open $fh, '>', "$app_name/app.conf";
     print $fh Dump $conf;
     close $fh;
+    print "generate $app_name/app.conf\n";
 }
 
 1;

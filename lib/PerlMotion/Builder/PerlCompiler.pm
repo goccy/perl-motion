@@ -7,10 +7,10 @@ use Compiler::Parser::AST::Renderer;
 use Compiler::CodeGenerator::LLVM;
 
 sub new {
-    my ($class, $target_name) = @_;
+    my ($class, $output_name) = @_;
     my $self = {
-        output => "build/$target_name.ll",
-        library_path => ['extlib'],
+        output => $output_name,
+        library_path => ['lib'],
         debug  => 1
     };
     return bless $self, $class;
@@ -24,7 +24,10 @@ use %s;
 IOS::init(1);
 CODE
 
-    my $generator = Compiler::CodeGenerator::LLVM->new();#$link_file_name);
+    my $generator = Compiler::CodeGenerator::LLVM->new({
+        '32bit'          => 1,
+        runtime_api_path => $link_file_name
+    });
     my $llvm_ir = $generator->generate($ast);
 
     open my $fh, '>', $self->{output};

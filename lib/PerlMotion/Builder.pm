@@ -11,89 +11,245 @@ use File::Path qw(make_path remove_tree);
 use File::Basename qw(basename dirname);
 use YAML qw/LoadFile/;
 use PerlMotion::Builder::PerlCompiler;
+use PerlMotion::Builder::InfoPlist;
 
-sub build {
+sub new {
+    my ($class) = @_;
     my $work_dir = 'build';
     my $conf = LoadFile 'app.conf';
+    chomp(my $bin_dir = `llvm-config --bindir`);
+    my $clang = "$bin_dir/clang";
+    die 'could not find clang' unless $clang;
     my $app_name = $conf->{app_name};
-    my $app_delegate = $conf->{delegate};
-    my $runtime_library_file = 'gen/runtime_api.m';
-    my $SESSION_NAME = 'C3E39772-441E-4BD1-80D9-F051463BD7C3';
+
+    my $self = {
+        app_name     => $app_name,
+        app_delegate => $conf->{delegate},
+        app_dir      => File::Spec->catdir($work_dir, "$app_name\.app"),
+        build_dir    => 'build',
+        simulator_app_dir => simulator_dir($app_name),
+        storyboard_files => [ find_storyboard_files('.') ],
+        clang        => $clang,
+        'llvm-link'  => "$bin_dir/llvm-link",
+        perl_motion_core_libs => dirname(__FILE__) . '/Builder/PerlCompiler/perl_motion_core_libs'
+    };
+
+    return bless $self, $class;
+}
+
+sub build {
+    my ($self) = @_;
 
     run_command([qw|/usr/bin/killall iPhone Simulator|]);
 
-    unless ($runtime_library_file) {
-        die "could not find runtime library file";
-    }
+    make_dir($self->{app_dir});
 
-    my $app_dir = File::Spec->catdir(
-        $work_dir,
-        $app_name.".app"
-    );
+    $self->build_localize_file('.', $self->{app_dir});
 
-    make_dir($app_dir);
+    $self->build_storyboard($_) foreach @{$self->{storyboard_files}};
 
-    my $simulator_app_dir = File::Spec->catdir(
-        $ENV{HOME},
-        'Library',
-        'Application Support',
-        'iPhone Simulator',
-        '6.1',
-        'Applications',
-        $SESSION_NAME,
-        $app_name.".app"
-    );
+    $self->build_info_plist();
 
-    # make Info.plist
-    build_info_plist("./Info.plist", $app_dir);
+    make_dir($self->{build_dir});
 
-    # make ir file
-    my $compile_dir = File::Spec->catdir("build");
-    make_dir($compile_dir);
+    $self->build_simulator_code();
 
-    compile_to_ir($runtime_library_file, 'gen');
+    build_dsym_file($self->{app_dir}, $self->{app_name});
 
-    my $perl_compiler = PerlMotion::Builder::PerlCompiler->new($app_name);
-    $perl_compiler->compile($app_delegate, "build/$runtime_library_file");
-    print "compile successfuly\n";
-
-    # make object file
-    compile_ir_to_obj("$app_name\.ll", $compile_dir, $app_name);
-
-    # link object files
-    link_object_file([$runtime_library_file], $compile_dir, $app_dir, $app_name);
-
-    # make dsym filep
-    build_dsym_file($app_dir, $app_name);
-
-    # make PkgInfo
-    make_pkg_info($app_dir);
+    make_pkg_info($self->{app_dir});
 
     # copy app to simulator
-    remove_tree($simulator_app_dir);
-    make_dir($simulator_app_dir);
-    File::Copy::move($app_dir, $simulator_app_dir);
+    remove_tree($self->{simulator_app_dir});
+    make_dir($self->{simulator_app_dir});
+    File::Copy::move($self->{app_dir}, $self->{simulator_app_dir});
 
     # launch simulator
     exec 'open "/Applications/Xcode.app/Contents/Applications/iPhone Simulator.app"';
 }
 
-sub find_source_files {
-    my ($dir) = @_;
+sub simulator_dir {
+    my ($app_name) = @_;
 
-    return find_files($dir, "m");
+    my $sdk_version = '6.1';
+    my $SESSION_NAME = 'C3E39772-441E-4BD1-80D9-F051463BD7C3';
+
+    return File::Spec->catdir(
+        $ENV{HOME},
+        'Library',
+        'Application Support',
+        'iPhone Simulator',
+        $sdk_version,
+        'Applications',
+        $SESSION_NAME,
+        "$app_name\.app"
+    );
+}
+
+sub build_simulator_code {
+    my ($self) = @_;
+
+    my $i386_core_libs = $self->{perl_motion_core_libs} . '_32';
+    $self->compile_to_ir($i386_core_libs);
+
+    my $output_ir_name = 'build/' . $self->{app_name} . '.ll';
+    my $perl_compiler = PerlMotion::Builder::PerlCompiler->new($output_ir_name);
+    $perl_compiler->compile($self->{app_delegate}, "$i386_core_libs.ll");
+
+    print "compile successfuly\n";
+
+    $self->compile_ir_to_obj();
+
+    $self->link_object_file();
+}
+
+sub compile_to_ir {
+    my ($self, $core_libs) = @_;
+
+    my $basename = basename $core_libs;
+    my $dirname = dirname $core_libs;
+
+    my $path = dirname $INC{'Compiler/CodeGenerator/LLVM.pm'};
+    my $runtime_api_header_path = "$path/LLVM";
+    my $runtime_api_ir = "$runtime_api_header_path/runtime_api_32.ll";
+
+    my ($in, $out, $err);
+
+    run_command([
+        $self->{clang},
+        qw(
+              -S
+              -emit-llvm
+              -x objective-c
+              -arch i386
+              -fmessage-length=0
+              -std=gnu99
+              -fobjc-arc
+              -Wno-trigraphs
+              -fpascal-strings
+              -O0
+              -Wno-missing-field-initializers
+              -Wno-missing-prototypes
+              -Wreturn-type
+              -Wno-implicit-atomic-properties
+              -Wno-receiver-is-weak
+              -Wduplicate-method-match
+              -Wformat
+              -Wno-missing-braces
+              -Wparentheses
+              -Wswitch
+              -Wno-unused-function
+              -Wno-unused-label
+              -Wno-unused-parameter
+              -Wunused-variable
+              -Wunused-value
+              -Wempty-body
+              -Wuninitialized
+              -Wno-unknown-pragmas
+              -Wno-shadow
+              -Wno-four-char-constants
+              -Wno-conversion
+              -Wconstant-conversion
+              -Wint-conversion
+              -Wenum-conversion
+              -Wno-shorten-64-to-32
+              -Wpointer-sign
+              -Wno-newline-eof
+              -Wno-selector
+              -Wno-strict-selector-match
+              -Wno-undeclared-selector
+              -Wno-deprecated-implementations
+              -DDEBUG=1
+              -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator6.1.sdk
+              -fexceptions
+              -fasm-blocks
+              -fstrict-aliasing
+              -Wprotocol
+              -Wdeprecated-declarations
+              -g
+              -Wno-sign-conversion
+              -fobjc-abi-version=2
+              -fobjc-legacy-dispatch
+              -mios-simulator-version-min=6.1
+              -I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include
+        ),
+        "-I$runtime_api_header_path",
+        '-MMD',
+        '-MT',
+        'dependencies',
+        '--serialize-diagnostics',
+        File::Spec->catfile($dirname, $basename.".dia"),
+        '-c',
+        File::Spec->catfile($dirname, $basename.".m"),
+        '-o',
+        File::Spec->catfile($dirname, $basename.".ll")
+    ]);
+
+    run_command([
+        $self->{'llvm-link'},
+        '-o',
+        File::Spec->catfile($dirname, $basename.".ll"),
+        File::Spec->catfile($dirname, $basename.".ll"),
+        $runtime_api_ir
+    ]);
+}
+
+sub compile_ir_to_obj {
+    my ($self) = @_;
+    my $app_name = $self->{app_name};
+
+    run_command([qw(
+       llc
+       -filetype=obj
+       -march=x86
+       ),
+       '-o',
+       File::Spec->catfile($self->{build_dir}, "$app_name\.o"),
+       File::Spec->catfile($self->{build_dir}, "$app_name\.ll"),
+    ]);
+}
+
+sub link_object_file {
+    my ($self) = @_;
+
+    my $app_name = $self->{app_name};
+    my $list_file_name = File::Spec->catfile($self->{build_dir}, "LinkFileList");
+    my $link_list_file = IO::File->new($list_file_name, 'w');
+    $link_list_file->print(File::Spec->catfile($self->{build_dir}, "$app_name\.o"));
+    $link_list_file->print("\n");
+    $link_list_file->close;
+
+    run_command([
+        $self->{clang},
+        qw(
+              -arch i386
+              -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator6.1.sdk
+              -Xlinker
+              -objc_abi_version
+              -Xlinker 2
+              -fobjc-arc
+              -fobjc-link-runtime
+              -Xlinker
+              -no_implicit_dylibs
+              -mios-simulator-version-min=6.1
+              -framework UIKit
+              -framework Foundation
+              -framework CoreGraphics
+        ),
+        '-filelist', $list_file_name,
+        '-o', File::Spec->catfile($self->{app_dir}, $self->{app_name}),
+    ]);
 }
 
 sub find_resource_files {
-    my ($dir) = @_;
+    my ($self) = @_;
 
-    return find_files($dir, "png");
+    return find_files($self->{app_dir}, "png");
 }
 
 sub find_storyboard_files {
-    my ($dir) = @_;
+    my ($app_dir) = @_;
 
-    return find_files($dir, "storyboard");
+    return find_files($app_dir, "storyboard");
 }
 
 sub find_files {
@@ -111,10 +267,53 @@ sub find_files {
     return @files;
 }
 
+sub build_storyboard {
+    my ($self, $storyboard_file) = @_;
+
+    my $app_dir = $self->{app_dir};
+    my $basename = basename($storyboard_file, ".storyboard");
+    run_command([
+        qw(
+              /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/bin/ibtool
+              --errors
+              --warnings
+              --notices
+              --output-format human-readable-text
+              --sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator6.1.sdk
+        ),
+        '--compile',
+        File::Spec->catdir($app_dir, 'en.lproj', $basename.".storyboardc"),
+        $storyboard_file,
+    ]);
+}
+
+sub build_localize_file {
+    my ($self, $base_dir) = @_;
+
+    my $app_dir = $self->{app_dir};
+    make_dir(File::Spec->catdir($app_dir, 'en.lproj'));
+    my @command = (
+        'plutil',
+        '-convert', 'binary1',
+        File::Spec->catfile($base_dir, 'en.lproj', 'InfoPlist.strings'),
+        '-o',
+        File::Spec->catfile($app_dir, 'en.lproj', 'InfoPlist.strings'),
+    );
+
+    run_command(\@command);
+}
+
 sub build_info_plist {
-    my ($source, $appdir) = @_;
-    my $output_dir = File::Spec->catfile($appdir, "Info.plist");
-    system "plutil -convert binary1 $source -o $output_dir";
+    my ($self) = @_;
+
+    PerlMotion::Builder::InfoPlist->make(
+        $self->{build_dir},
+        $self->{app_dir},
+        {
+            app_name       => $self->{app_name},
+            use_storyboard => scalar @{$self->{storyboard_files}}
+        }
+    );
 }
 
 sub copy_file {
@@ -133,138 +332,6 @@ sub build_dsym_file {
         '-o', $app_dir.".dSYM",
     );
 
-    run_command(\@command);
-}
-
-sub link_object_file {
-    my ($files, $compile_dir, $app_dir, $app_name) = @_;
-
-    my $list_file_name = File::Spec->catfile($compile_dir, "LinkFileList");
-    my $link_list_file = IO::File->new(
-        $list_file_name,
-        'w'
-    );
-    for (@$files) {
-        $link_list_file->print(
-            File::Spec->catfile($compile_dir, "$app_name\.o"),
-        );
-        $link_list_file->print("\n");
-    }
-    $link_list_file->close;
-
-    my @command = (qw(
-        /usr/local/bin/clang
-        -arch i386
-        -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator6.1.sdk
-        -Xlinker
-        -objc_abi_version
-        -Xlinker 2
-        -fobjc-arc
-        -fobjc-link-runtime
-        -Xlinker
-        -no_implicit_dylibs
-        -mios-simulator-version-min=6.1
-        -framework UIKit
-        -framework Foundation
-        -framework CoreGraphics
-    ),
-        '-filelist', $list_file_name,
-        '-o', File::Spec->catfile($app_dir, $app_name),
-    );
-
-    run_command(\@command);
-}
-
-sub compile_ir_to_obj {
-    my ($file, $compile_dir, $app_name) = @_;
-
-    #my $basename = basename($file, ".ll");
-    my @command = (qw(
-       llc
-       -filetype=obj
-       -march=x86
-       ),
-       '-o',
-       File::Spec->catfile($compile_dir, "$app_name\.o"),
-       File::Spec->catfile($compile_dir, "$app_name\.ll")
-    );
-    run_command(\@command);
-}
-
-sub compile_to_ir {
-    my ($file, $compile_dir) = @_;
-
-    my ($in, $out, $err);
-    my $basename = basename($file, ".m");
-    my @command = (qw(
-        /usr/local/bin/clang
-        -S
-        -emit-llvm
-        -x objective-c
-        -arch i386
-        -fmessage-length=0
-        -std=gnu99
-        -fobjc-arc
-        -Wno-trigraphs
-        -fpascal-strings
-        -O0
-        -Wno-missing-field-initializers
-        -Wno-missing-prototypes
-        -Wreturn-type
-        -Wno-implicit-atomic-properties
-        -Wno-receiver-is-weak
-        -Wduplicate-method-match
-        -Wformat
-        -Wno-missing-braces
-        -Wparentheses
-        -Wswitch
-        -Wno-unused-function
-        -Wno-unused-label
-        -Wno-unused-parameter
-        -Wunused-variable
-        -Wunused-value
-        -Wempty-body
-        -Wuninitialized
-        -Wno-unknown-pragmas
-        -Wno-shadow
-        -Wno-four-char-constants
-        -Wno-conversion
-        -Wconstant-conversion
-        -Wint-conversion
-        -Wenum-conversion
-        -Wno-shorten-64-to-32
-        -Wpointer-sign
-        -Wno-newline-eof
-        -Wno-selector
-        -Wno-strict-selector-match
-        -Wno-undeclared-selector
-        -Wno-deprecated-implementations
-        -DDEBUG=1
-        -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator6.1.sdk
-        -fexceptions
-        -fasm-blocks
-        -fstrict-aliasing
-        -Wprotocol
-        -Wdeprecated-declarations
-        -g
-        -Wno-sign-conversion
-        -fobjc-abi-version=2
-        -fobjc-legacy-dispatch
-        -mios-simulator-version-min=6.1
-        -I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include
-        -I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include
-        -I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include
-        -MMD
-        -MT
-        dependencies
-    ),
-        '--serialize-diagnostics',
-        File::Spec->catfile($compile_dir, $basename.".dia"),
-        '-c',
-        $file,
-        '-o',
-        File::Spec->catfile($compile_dir, $basename.".lli")
-    );
     run_command(\@command);
 }
 
@@ -287,10 +354,7 @@ sub run_command {
     run $command, \$in, \$out, \$err;
 
     unless ($dont_died_if_has_error) {
-        if ($err) {
-            warn $err;
-            #die $err;
-        }
+        warn $err if ($err);
     }
 }
 

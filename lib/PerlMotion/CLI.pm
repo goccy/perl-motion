@@ -31,7 +31,7 @@ sub run {
         PerlMotion::Skelton::generate_skelton($self->{create});
     } elsif ($self->{build}) {
         print "build\n";
-        PerlMotion::Builder::build();
+        PerlMotion::Builder->new->build();
     }
 }
 
