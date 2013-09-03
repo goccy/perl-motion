@@ -35,12 +35,12 @@ sub generate_app_delegate_code {
 
 __DATA__
 package %s::AppDelegate;
-use base 'AppDelegate';
+use base 'UIApplicationDelegate';
 use UIAlertView;
 
 # this method is entrypoint of your application
 sub application {
-    my ($self, $options) = @_;
+    my ($app, $options) = @_;
     my $alert = UIAlertView->new({
         init_with_title => 'HelloSample',
         message         => 'Hello PerlMotion!!'

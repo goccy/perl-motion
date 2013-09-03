@@ -1,7 +1,16 @@
-#!/usr/bin/env perl
-use strict;
-use warnings;
-use PerlMotion::CLI;
+#!/bin/sh
 
-my $perlmotion = PerlMotion::CLI->new();
-$perlmotion->run(\@ARGV);
+WORK_DIR=`pwd -P`
+cd `dirname $0`
+SELF_NAME=`basename $0`
+while [ -L "$SELF_NAME" ]
+do
+    SELF_NAME=`readlink "$SELF_NAME"`
+    cd `dirname $SELF_NAME`
+    SELF_NAME=`basename "$SELF_NAME"`
+done
+SELF_PATH=`pwd -P`/$SELF_NAME
+cd $WORK_DIR
+
+SCRIPT_DIR=`dirname "$SELF_PATH"`
+PERL_CARTON_PATH="$SCRIPT_DIR/../local" carton exec -- perl $SCRIPT_DIR/perl-motion.pl $@

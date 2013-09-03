@@ -23,13 +23,11 @@ IOS::store_ios_native_library(1);
 use %s;
 IOS::init(1);
 CODE
-
     my $generator = Compiler::CodeGenerator::LLVM->new({
         '32bit'          => 1,
         runtime_api_path => $link_file_name
     });
     my $llvm_ir = $generator->generate($ast);
-
     open my $fh, '>', $self->{output};
     print $fh $llvm_ir;
     close $fh;

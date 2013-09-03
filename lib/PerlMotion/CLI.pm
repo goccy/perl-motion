@@ -3,44 +3,58 @@ use strict;
 use warnings;
 use Getopt::Long;
 use PerlMotion::Skelton;
-use PerlMOtion::Builder;
+use PerlMotion::Builder;
 
 sub new {
     my ($class) = @_;
-    my $self = {};
-    return bless $self, $class;
+    return bless {}, $class;
 }
 
 sub run {
     my ($self, $args) = @_;
-    local @ARGV = @$args;
+
+    my @argv;
     my $p = Getopt::Long::Parser->new(
         config => ["no_ignore_case", "pass_through"],
     );
-    $p->getoptions(
-        "h|help"     => \$self->{help},
-        "b|build"    => \$self->{build},
-        "c|create=s" => \$self->{create},
+    $p->getoptionsfromarray(
+        $args,
+        "h|help"     => sub { unshift @argv, 'help' },
     );
-    if ($self->{help}) {
-        $self->usage;
-        return;
+    push @argv, @$args;
+
+    my $command = shift @argv;
+    if (defined $command && (my $cmd_code = $self->can("command_$command"))) {
+        $cmd_code->(\@argv);
+    } else {
+        warn <<HELP;
+Command not Found
+HELP
+        return 1;
     }
-    if ($self->{create}) {
-        # create skelton code
-        PerlMotion::Skelton::generate_skelton($self->{create});
-    } elsif ($self->{build}) {
-        print "build\n";
-        PerlMotion::Builder->new->build();
-    }
+
+    return 0;
 }
 
-sub usage {
-    my $self = shift;
+sub command_help {
     my $msg = <<"HELP";
-Usage: perl-motion [--create=<ApplicationName>] [--help]
+Usage: perl-motion <command> [<args>]
+Commands:
+    create <ApplicationName>
+    build
+    help
 HELP
     print $msg, "\n";
+}
+
+sub command_create {
+    my ($argv) = @_;
+    PerlMotion::Skelton::generate_skelton(@$argv);
+}
+
+sub command_build {
+    my ($argv) = @_;
+    PerlMotion::Builder->new->build;
 }
 
 1;

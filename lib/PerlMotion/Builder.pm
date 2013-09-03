@@ -40,7 +40,7 @@ sub new {
 sub build {
     my ($self) = @_;
 
-    run_command([qw|/usr/bin/killall iPhone Simulator|]);
+    run_command(['/usr/bin/killall', 'iPhone Simulator']);
 
     make_dir($self->{app_dir});
 
@@ -58,13 +58,33 @@ sub build {
 
     make_pkg_info($self->{app_dir});
 
-    # copy app to simulator
-    remove_tree($self->{simulator_app_dir});
-    make_dir($self->{simulator_app_dir});
-    File::Copy::move($self->{app_dir}, $self->{simulator_app_dir});
+    $self->start_simulator;
+}
 
-    # launch simulator
-    exec 'open "/Applications/Xcode.app/Contents/Applications/iPhone Simulator.app"';
+sub start_simulator {
+    my ($self) = @_;
+
+    my $is_tmux = !!$ENV{'TMUX'};
+    my $can_use_ios_sim = !system("type ios-sim");
+    my $can_use_reattach = !system("type reattach-to-user-namespace");
+    if ($can_use_ios_sim) {
+        if ($is_tmux && !$can_use_reattach) {
+            warn <<WARN_MSG;
+Could not start iPhone Simulator.
+because it appears you are using tmux and not installed 'reattach-to-user-namespace' yet.
+WARN_MSG
+            return 1;
+        }
+        run_command([$is_tmux ? 'reattach-to-user-namespace' : (), 'ios-sim', 'launch', $self->{app_dir}]);
+    } else {
+        # copy app to simulator
+        remove_tree($self->{simulator_app_dir});
+        make_dir($self->{simulator_app_dir});
+        File::Copy::move($self->{app_dir}, $self->{simulator_app_dir});
+
+        # launch simulator
+        exec 'open "/Applications/Xcode.app/Contents/Applications/iPhone Simulator.app"';
+    }
 }
 
 sub simulator_dir {
