@@ -8,6 +8,10 @@
 #include "UIWindow.m"
 #include "UIScreen.m"
 #include "UIColor.m"
+#include "NSIndexPath.m"
+#include "UILabel.m"
+#include "UITableViewCell.m"
+#include "UITableViewController.m"
 
 UnionType ios_init(ArrayObject *args)
 {
@@ -55,6 +59,11 @@ Value store_ios_native_library(ArrayObject *args)
 	UIViewController_setup();
 	UITableView_setup();
 	UIColor_setup();
+	NSIndexPath_setup();
+	UITableViewCell_setup();
+	UITableViewController_setup();
+	UITableView_setup();
+	UILabel_setup();
 	Value ret;
 	ret.o = INT_init(0);
 	return ret;
