@@ -7,6 +7,7 @@ use File::Spec;
 use IPC::Run qw(run);
 use File::Find qw(find);
 use File::Copy qw(copy);
+use File::Copy::Recursive qw/dircopy/;
 use File::Path qw(make_path remove_tree);
 use File::Basename qw(basename dirname);
 use YAML qw/LoadFile/;
@@ -57,6 +58,7 @@ sub build {
     build_dsym_file($self->{app_dir}, $self->{app_name});
 
     make_pkg_info($self->{app_dir});
+    $self->copy_resource_file();
 
     $self->start_simulator;
 }
@@ -285,6 +287,11 @@ sub find_files {
     find($find, $dir);
 
     return @files;
+}
+
+sub copy_resource_file {
+    my ($self) = @_;
+    dircopy('resources', File::Spec->catdir($self->{app_dir}));
 }
 
 sub build_storyboard {

@@ -18,10 +18,12 @@ sub generate_app_delegate_code {
         delegate => "$app_name\::AppDelegate"
     };
     make_path("$app_name/lib/$app_name");
+    make_path("$app_name/resources");
     open my $fh, '>', "$app_name/lib/$app_name/AppDelegate.pm";
     print $fh $code;
     close $fh;
     print "generate $app_name\n";
+    print "generate $app_name/resources\n";
     print "generate $app_name/lib\n";
     print "generate $app_name/lib/$app_name\n";
     print "generate $app_name/lib/$app_name/AppDelegate.pm\n";
@@ -41,8 +43,7 @@ use UIAlertView;
 # this method is entrypoint of your application
 sub application {
     my ($app, $options) = @_;
-    my $alert = UIAlertView->new({
-        init_with_title => 'HelloSample',
+    my $alert = UIAlertView->new->init_with_title('Hello', {
         message         => 'Hello PerlMotion!!'
     });
     $alert->show();

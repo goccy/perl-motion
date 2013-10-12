@@ -2,11 +2,13 @@
 #include "AppDelegate.m"
 #include "UITableView.m"
 #include "UIView.m"
+#include "UIResponder.m"
 #include "UIViewController.m"
 #include "UIApplication.m"
 #include "UIAlertView.m"
 #include "UIWindow.m"
 #include "UIScreen.m"
+#include "UIImage.m"
 #include "UIColor.m"
 
 UnionType ios_init(ArrayObject *args)
@@ -19,7 +21,7 @@ UnionType ios_init(ArrayObject *args)
 
 CodeRefObject *get_overrided_method(PackageObject *pkg, const char *mtd_name)
 {
-	pthread_mutex_lock(&mutex);
+  //pthread_mutex_lock(&mutex);
 	StringObject *s = to_String(new_String((char *)mtd_name).o);
 	UnionType mtd = pkg->table[s->hash];
 	CodeRefObject *code_ref = NULL;
@@ -35,8 +37,17 @@ CodeRefObject *get_overrided_method(PackageObject *pkg, const char *mtd_name)
 			}
 		}
 	}
-	pthread_mutex_unlock(&mutex);
+	//pthread_mutex_unlock(&mutex);
 	return code_ref;
+}
+
+ArrayObject *make_array(size_t size)
+{
+	Value **list = (Value **)malloc(sizeof(Value *) * size);
+	for (size_t i = 0; i < size; i++) {
+		list[i] = (Value *)fetch_object();
+	}
+	return to_Array((new_Array(list, size)).o);
 }
 
 Value Hash_get_by_char(HashObject *hash, const char *name)
@@ -52,8 +63,10 @@ Value store_ios_native_library(ArrayObject *args)
 	UIScreen_setup();
 	UIWindow_setup();
 	UIView_setup();
+    UIResponder_setup();
 	UIViewController_setup();
 	UITableView_setup();
+	UIImage_setup();
 	UIColor_setup();
 	Value ret;
 	ret.o = INT_init(0);

@@ -9,7 +9,7 @@
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
 	//fprintf(stderr, "called AppDelegate::application\n");
-	pthread_mutex_lock(&mutex);
+  //pthread_mutex_lock(&mutex);
 	size_t key_size = pkg_map->size;
 	StringObject **keys = pkg_map->keys;
 	PackageObject *app_delegate_pkg = NULL;
@@ -24,7 +24,7 @@
 			}
 		}
 	}
-	pthread_mutex_unlock(&mutex);
+	//pthread_mutex_unlock(&mutex);
 	StringObject *application_method = to_String((new_String("application")).o);
 	CodeRefObject *app = to_CodeRef(app_delegate_pkg->table[application_method->hash].o);
 	fprintf(stderr, "application = [%p]\n", application);

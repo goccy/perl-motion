@@ -6,6 +6,19 @@
 
 @implementation PerlMotionUITableView
 
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+	DBG_PL("called UITableView_touches_began");
+	CodeRefObject *overrided_method = get_overrided_method(self.pkg, "touches_began");
+	if (overrided_method) {
+		DBG_PL("found overrided method");
+		ArrayObject *args = make_array(3);
+		*args->list[0] = new_FFI("UITableView", (__bridge_retained void *)self);
+		DBG_PL("invoke touches_began");
+		overrided_method->code(args);
+	}
+}
+
 @end
 
 Value UITableView_new(ArrayObject *args)

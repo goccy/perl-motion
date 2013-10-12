@@ -9,16 +9,26 @@
 - (void)loadView
 {
 	DBG_PL("called PerlMotionUIViewController::loadView");
-	CodeRefObject *overrided_load_view = get_overrided_method(self.pkg, "load_view");
-	if (overrided_load_view) {
+	CodeRefObject *overrided_method = get_overrided_method(self.pkg, "load_view");
+	if (overrided_method) {
 		DBG_PL("found overrided method");
-		Value **list = (Value **)malloc(sizeof(Value *));
-		Value *o = (Value *)fetch_object();
-		*o = new_FFI("UIViewController", (__bridge_retained void *)self);
-		list[0] = o;
-		ArrayObject *args = to_Array((new_Array(list, 1)).o);
+		ArrayObject *args = make_array(1);
+		*args->list[0] = new_FFI("UIViewController", (__bridge_retained void *)self);
 		DBG_PL("invoke load_view");
-		overrided_load_view->code(args);
+		overrided_method->code(args);
+	}
+}
+
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+	DBG_PL("called UIViewController_touches_began");
+	CodeRefObject *overrided_method = get_overrided_method(self.pkg, "touches_began");
+	if (overrided_method) {
+		DBG_PL("found overrided method");
+		ArrayObject *args = make_array(3);
+		*args->list[0] = new_FFI("UIViewController", (__bridge_retained void *)self);
+		DBG_PL("invoke touches_began");
+		overrided_method->code(args);
 	}
 }
 

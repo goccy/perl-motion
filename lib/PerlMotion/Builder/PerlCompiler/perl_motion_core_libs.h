@@ -48,3 +48,4 @@
 
 extern CodeRefObject *get_overrided_method(PackageObject *pkg, const char *mtd_name);
 extern Value Hash_get_by_char(HashObject *hash, const char *key);
+extern ArrayObject *make_array(size_t size);
